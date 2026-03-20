@@ -41,11 +41,19 @@ const getStoredUser = (): AuthUser | null => {
         let hasValue = false;
 
         if ("id" in parsed) {
-            if (typeof parsed.id !== "number") {
+            if (typeof parsed.id === "number") {
+                user.id = parsed.id;
+                hasValue = true;
+            } else if (typeof parsed.id === "string") {
+                const parsedId = Number(parsed.id);
+                if (Number.isNaN(parsedId)) {
+                    return null;
+                }
+                user.id = parsedId;
+                hasValue = true;
+            } else {
                 return null;
             }
-            user.id = parsed.id;
-            hasValue = true;
         }
         if ("name" in parsed) {
             if (typeof parsed.name !== "string") {
