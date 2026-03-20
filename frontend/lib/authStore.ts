@@ -49,11 +49,7 @@ const getStoredUser = (): AuthUser | null => {
                 if (!/^\d+$/.test(trimmedId)) {
                     return null;
                 }
-                const parsedId = Number(trimmedId);
-                if (!Number.isFinite(parsedId)) {
-                    return null;
-                }
-                user.id = parsedId;
+                user.id = Number(trimmedId);
                 hasValue = true;
             } else {
                 return null;
