@@ -2,17 +2,22 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Search, ShoppingCart, User as UserIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useAuthStore } from "@/lib/authStore";
 
 export default function Navbar() {
     const router = useRouter();
     const [searchQuery, setSearchQuery] = useState("");
-    // TODO: Replace with real auth state
-    const isLoggedIn = false;
+    const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
+    const initializeFromStorage = useAuthStore((state) => state.initializeFromStorage);
     const cartItemsCount = 0;
+
+    useEffect(() => {
+        initializeFromStorage();
+    }, [initializeFromStorage]);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();

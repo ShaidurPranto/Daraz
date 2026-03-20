@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { toast } from "sonner";
+import { useAuthStore } from "@/lib/authStore";
 
 const BASE_URL = typeof window === 'undefined'
     ? (process.env.NEXT_INTERNAL_SERVER_URL || 'http://backend:4000')
@@ -15,6 +17,7 @@ export default function LoginPage() {
     const router = useRouter();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const setAuth = useAuthStore((state) => state.setAuth);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -29,13 +32,14 @@ export default function LoginPage() {
             if (res.ok && data.status === "success") {
                 localStorage.setItem("token", data.data.token);
                 localStorage.setItem("user", JSON.stringify(data.data.user));
+                setAuth(data.data.token, data.data.user);
                 router.push("/");
             } else {
-                alert(data.message || "Login failed");
+                toast.error(data.message || "Login failed");
             }
         } catch (error) {
             console.error("Login error", error);
-            alert("An error occurred during login.");
+            toast.error("An error occurred during login.");
         }
     };
 
