@@ -12,12 +12,11 @@ export default function Navbar() {
     const router = useRouter();
     const [searchQuery, setSearchQuery] = useState("");
     const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
-    const initializeFromStorage = useAuthStore((state) => state.initializeFromStorage);
     const cartItemsCount = 0;
 
     useEffect(() => {
-        initializeFromStorage();
-    }, [initializeFromStorage]);
+        useAuthStore.getState().initializeFromStorage();
+    }, []);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
