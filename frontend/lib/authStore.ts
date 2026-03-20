@@ -33,7 +33,43 @@ const getStoredUser = (): AuthUser | null => {
         return null;
     }
     try {
-        return JSON.parse(storedUser) as AuthUser;
+        const parsed = JSON.parse(storedUser);
+        if (!parsed || typeof parsed !== "object") {
+            return null;
+        }
+        const user: AuthUser = {};
+        let hasValue = false;
+
+        if ("id" in parsed) {
+            if (typeof parsed.id !== "number") {
+                return null;
+            }
+            user.id = parsed.id;
+            hasValue = true;
+        }
+        if ("name" in parsed) {
+            if (typeof parsed.name !== "string") {
+                return null;
+            }
+            user.name = parsed.name;
+            hasValue = true;
+        }
+        if ("email" in parsed) {
+            if (typeof parsed.email !== "string") {
+                return null;
+            }
+            user.email = parsed.email;
+            hasValue = true;
+        }
+        if ("phone" in parsed) {
+            if (typeof parsed.phone !== "string") {
+                return null;
+            }
+            user.phone = parsed.phone;
+            hasValue = true;
+        }
+
+        return hasValue ? user : null;
     } catch (error) {
         console.error("Failed to parse stored user", error);
         return null;
