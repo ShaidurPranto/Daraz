@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import AuthInitializer from "@/components/AuthInitializer";
 import Navbar from "@/components/Navbar";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -30,6 +31,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <div className="root">
+          <AuthInitializer />
           <Navbar />
           <main className="min-h-[calc(100vh-4rem)]">
             {children}

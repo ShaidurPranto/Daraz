@@ -45,11 +45,10 @@ const getStoredUser = (): AuthUser | null => {
                 user.id = parsed.id;
                 hasValue = true;
             } else if (typeof parsed.id === "string") {
-                const trimmedId = parsed.id.trim();
-                if (!/^\d+$/.test(trimmedId)) {
+                if (!/^\d+$/.test(parsed.id)) {
                     return null;
                 }
-                user.id = Number(trimmedId);
+                user.id = Number(parsed.id);
                 hasValue = true;
             } else {
                 return null;

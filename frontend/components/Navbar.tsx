@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Search, ShoppingCart, User as UserIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,14 +12,7 @@ export default function Navbar() {
     const router = useRouter();
     const [searchQuery, setSearchQuery] = useState("");
     const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
-    const hasInitialized = useAuthStore((state) => state.hasInitialized);
     const cartItemsCount = 0;
-
-    useEffect(() => {
-        if (!hasInitialized) {
-            useAuthStore.getState().initializeFromStorage();
-        }
-    }, [hasInitialized]);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
