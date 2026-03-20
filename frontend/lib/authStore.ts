@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 type AuthUser = {
-    id?: number | string;
+    id?: number;
     name?: string;
     email?: string;
     phone?: string;
@@ -11,6 +11,7 @@ type AuthState = {
     isLoggedIn: boolean;
     token: string | null;
     user: AuthUser | null;
+    hasInitialized: boolean;
     setAuth: (token: string, user: AuthUser) => void;
     clearAuth: () => void;
     initializeFromStorage: () => void;
@@ -43,23 +44,34 @@ export const useAuthStore = create<AuthState>((set) => ({
     isLoggedIn: false,
     token: null,
     user: null,
+    hasInitialized: false,
     setAuth: (token, user) => {
         if (typeof window !== "undefined") {
             localStorage.setItem("token", token);
             localStorage.setItem("user", JSON.stringify(user));
         }
-        set({ isLoggedIn: true, token, user });
+        set({ isLoggedIn: true, token, user, hasInitialized: true });
     },
     clearAuth: () => {
         if (typeof window !== "undefined") {
             localStorage.removeItem("token");
             localStorage.removeItem("user");
         }
-        set({ isLoggedIn: false, token: null, user: null });
+        set({ isLoggedIn: false, token: null, user: null, hasInitialized: true });
     },
     initializeFromStorage: () => {
-        const token = getStoredToken();
-        const user = getStoredUser();
-        set({ isLoggedIn: Boolean(token), token, user });
+        set((state) => {
+            if (state.hasInitialized) {
+                return {};
+            }
+            const token = getStoredToken();
+            const user = getStoredUser();
+            return {
+                isLoggedIn: Boolean(token),
+                token,
+                user,
+                hasInitialized: true,
+            };
+        });
     },
 }));
