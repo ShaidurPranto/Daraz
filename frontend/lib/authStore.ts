@@ -46,7 +46,7 @@ const getStoredUser = (): AuthUser | null => {
                 hasValue = true;
             } else if (typeof parsed.id === "string") {
                 const parsedId = Number(parsed.id);
-                if (Number.isNaN(parsedId)) {
+                if (!Number.isFinite(parsedId)) {
                     return null;
                 }
                 user.id = parsedId;
