@@ -268,6 +268,11 @@ export default function AdminDashboard() {
                   Sales Analytics
                 </Button>
               </Link>
+              <Link href="/admin/coupons">
+                <Button variant="outline" className="w-full">
+                  Manage Coupons
+                </Button>
+              </Link>
             </CardContent>
           </Card>
         </div>

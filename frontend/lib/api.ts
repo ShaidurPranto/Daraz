@@ -834,6 +834,166 @@ export async function updateAdminOrderStatus(
   return res.json();
 }
 
+// ============ COUPON API ============
+
+export type CouponDiscountType = "percentage" | "fixed";
+export type CouponPromotionChannel = "TV" | "Facebook" | "Newspaper" | "Other";
+
+export interface Coupon {
+  id: string;
+  code: string;
+  discount_type: CouponDiscountType;
+  discount_value: number;
+  min_order_amount: number;
+  max_discount_amount: number | null;
+  start_date: string;
+  end_date: string;
+  usage_limit: number | null;
+  used_count: number;
+  is_active: boolean;
+  promotion_channels: CouponPromotionChannel[];
+  promotion_notes: string | null;
+  created_at: string;
+}
+
+export interface CreateCouponPayload {
+  code: string;
+  discount_type: CouponDiscountType;
+  discount_value: number;
+  min_order_amount?: number;
+  max_discount_amount?: number | null;
+  start_date: string;
+  end_date: string;
+  usage_limit?: number | null;
+  promotion_channels?: CouponPromotionChannel[];
+  promotion_notes?: string | null;
+}
+
+export interface CouponValidationResult {
+  coupon_id: string;
+  code: string;
+  discount_type: CouponDiscountType;
+  discount_value: number;
+  discount_amount: number;
+  final_amount: number;
+}
+
+function adminToken() {
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  if (!token) throw new Error("Unauthorized - Please login as admin");
+  return token;
+}
+
+export async function fetchAdminCoupons(): Promise<Coupon[]> {
+  const url = `${BASE_URL}/coupons`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${adminToken()}` },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { message?: string }).message || "Failed to fetch coupons");
+  }
+  const json = await res.json();
+  return json.data as Coupon[];
+}
+
+export async function createCouponByAdmin(payload: CreateCouponPayload): Promise<Coupon> {
+  const url = `${BASE_URL}/coupons`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${adminToken()}`,
+    },
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { message?: string }).message || "Failed to create coupon");
+  }
+  const json = await res.json();
+  return json.data as Coupon;
+}
+
+export async function updateCouponByAdmin(
+  couponId: string,
+  payload: Partial<CreateCouponPayload> & { is_active?: boolean },
+): Promise<Coupon> {
+  const url = `${BASE_URL}/coupons/${couponId}`;
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${adminToken()}`,
+    },
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { message?: string }).message || "Failed to update coupon");
+  }
+  const json = await res.json();
+  return json.data as Coupon;
+}
+
+export async function adjustCouponDaysByAdmin(couponId: string, days: number): Promise<Coupon> {
+  const url = `${BASE_URL}/coupons/${couponId}/days`;
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${adminToken()}`,
+    },
+    body: JSON.stringify({ days }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { message?: string }).message || "Failed to adjust coupon days");
+  }
+  const json = await res.json();
+  return json.data as Coupon;
+}
+
+export async function deleteCouponByAdmin(couponId: string): Promise<void> {
+  const url = `${BASE_URL}/coupons/${couponId}`;
+  const res = await fetch(url, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${adminToken()}` },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { message?: string }).message || "Failed to delete coupon");
+  }
+}
+
+export async function validateCouponCode(
+  code: string,
+  order_amount: number,
+): Promise<CouponValidationResult> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const url = `${BASE_URL}/coupons/validate`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ code, order_amount }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { message?: string }).message || "Invalid coupon");
+  }
+  const json = await res.json();
+  return json.data as CouponValidationResult;
+}
+
 // ============ AUDIT LOGS API ============
 
 export interface AuditLog {
