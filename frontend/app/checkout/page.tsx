@@ -6,9 +6,9 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { fetchCart, placeOrder } from "@/lib/api";
+import { fetchCart, placeOrder, validateCouponCode, type CouponValidationResult } from "@/lib/api";
 import { toast } from "sonner";
-import { Truck, CreditCard } from "lucide-react";
+import { Truck, CreditCard, Tag, X } from "lucide-react";
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -18,6 +18,9 @@ export default function CheckoutPage() {
   const [error, setError] = useState<string | null>(null);
   const [shippingAddress, setShippingAddress] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("Cash on Delivery");
+  const [couponInput, setCouponInput] = useState("");
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState<CouponValidationResult | null>(null);
 
   const DELIVERY_FEE = 60;
 
@@ -47,7 +50,31 @@ export default function CheckoutPage() {
   }, [router]);
 
   const cartTotal = cartItems.reduce((acc, curr) => acc + curr.total_price, 0);
-  const totalPayment = cartTotal + DELIVERY_FEE;
+  const discountAmount = appliedCoupon?.discount_amount ?? 0;
+  const totalPayment = cartTotal - discountAmount + DELIVERY_FEE;
+
+  const handleApplyCoupon = async () => {
+    if (!couponInput.trim()) {
+      toast.error("Enter a coupon code");
+      return;
+    }
+    setCouponLoading(true);
+    try {
+      const result = await validateCouponCode(couponInput.trim(), cartTotal);
+      setAppliedCoupon(result);
+      toast.success(`Coupon applied! You save ৳${result.discount_amount.toLocaleString()}`);
+    } catch (err: any) {
+      toast.error(err.message || "Invalid coupon");
+      setAppliedCoupon(null);
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponInput("");
+  };
 
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,7 +93,7 @@ export default function CheckoutPage() {
       setSubmitting(true);
       setError(null);
 
-      const response = await placeOrder(paymentMethod, shippingAddress);
+      const response = await placeOrder(paymentMethod, shippingAddress, appliedCoupon?.code);
 
       if (response.data.redirect && response.data.checkout_url) {
         // Online Payment — redirect to SSLCommerz gateway
@@ -221,6 +248,54 @@ export default function CheckoutPage() {
             </CardContent>
           </Card>
 
+          {/* Coupon Code */}
+          <Card className="shadow-sm border-gray-100">
+            <CardHeader>
+              <CardTitle className="text-xl flex items-center gap-2">
+                <Tag className="h-5 w-5" />
+                Coupon Code
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {appliedCoupon ? (
+                <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+                  <div>
+                    <p className="font-semibold text-green-800">{appliedCoupon.code}</p>
+                    <p className="text-sm text-green-600">
+                      You save ৳{appliedCoupon.discount_amount.toLocaleString()}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemoveCoupon}
+                    className="rounded-full p-1 text-green-600 hover:bg-green-100"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter coupon code"
+                    value={couponInput}
+                    onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleApplyCoupon())}
+                    disabled={couponLoading}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleApplyCoupon}
+                    disabled={couponLoading}
+                    className="shrink-0"
+                  >
+                    {couponLoading ? "Applying..." : "Apply"}
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card className="shadow-sm border-gray-100">
             <CardHeader>
               <CardTitle className="text-xl">Payment Method</CardTitle>
@@ -294,6 +369,15 @@ export default function CheckoutPage() {
                 <span>Items Total ({cartItems.length})</span>
                 <span>৳ {cartTotal.toLocaleString()}</span>
               </div>
+              {appliedCoupon && (
+                <div className="flex justify-between text-green-600 font-medium">
+                  <span className="flex items-center gap-1">
+                    <Tag className="h-3.5 w-3.5" />
+                    Coupon ({appliedCoupon.code})
+                  </span>
+                  <span>− ৳ {appliedCoupon.discount_amount.toLocaleString()}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span>Delivery Fee</span>
                 <span>৳ {DELIVERY_FEE.toLocaleString()}</span>
