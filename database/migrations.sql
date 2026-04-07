@@ -157,3 +157,24 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id    ON audit_logs (user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_path       ON audit_logs (path);
 CREATE INDEX IF NOT EXISTS idx_user_activity_user    ON user_activity (user_id);
+
+-- Coupons Table
+CREATE TABLE IF NOT EXISTS coupons (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    code VARCHAR(50) UNIQUE NOT NULL,
+    discount_type VARCHAR(20) NOT NULL CHECK (discount_type IN ('percentage', 'fixed')),
+    discount_value NUMERIC(10, 2) NOT NULL,
+    min_order_amount NUMERIC(10, 2) NOT NULL DEFAULT 0,
+    max_discount_amount NUMERIC(10, 2),
+    start_date TIMESTAMPTZ NOT NULL,
+    end_date TIMESTAMPTZ NOT NULL,
+    usage_limit INT,
+    used_count INT NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    promotion_channels TEXT[] NOT NULL DEFAULT '{}',
+    promotion_notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_coupons_code     ON coupons (code);
+CREATE INDEX IF NOT EXISTS idx_coupons_end_date ON coupons (end_date);
