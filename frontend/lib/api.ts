@@ -604,6 +604,7 @@ export async function addToCart(productId: string, quantity: number) {
 export async function placeOrder(
   paymentMethod: string,
   shippingAddress: string,
+  couponCode?: string | null,
 ) {
   const url = `${BASE_URL}/orders/checkout`;
   const token =
@@ -613,16 +614,19 @@ export async function placeOrder(
     throw new Error("Unauthorized - Please login");
   }
 
+  const body: Record<string, string> = {
+    payment_method: paymentMethod,
+    shipping_address: shippingAddress,
+  };
+  if (couponCode?.trim()) body.coupon_code = couponCode.trim();
+
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({
-      payment_method: paymentMethod,
-      shipping_address: shippingAddress,
-    }),
+    body: JSON.stringify(body),
     cache: "no-store",
   });
 
@@ -641,6 +645,8 @@ export async function placeOrder(
     data: {
       orderId: string;
       total_amount: number;
+      discount_amount: number;
+      coupon_code: string | null;
       redirect: boolean;
       checkout_url?: string;
     };
