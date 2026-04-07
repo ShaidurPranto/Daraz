@@ -59,6 +59,8 @@ CREATE TABLE IF NOT EXISTS orders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
     user_id UUID NOT NULL,
     total_amount NUMERIC(10, 2) NOT NULL,
+    discount_amount NUMERIC(10, 2) NOT NULL DEFAULT 0,
+    coupon_code VARCHAR(50),
     payment_method VARCHAR(50) NOT NULL,
     payment_status VARCHAR(50) NOT NULL,
     order_status VARCHAR(50) NOT NULL,
@@ -69,6 +71,10 @@ CREATE TABLE IF NOT EXISTS orders (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 );
+
+-- Add coupon columns to existing orders table (safe to run on already-created DB)
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(10, 2) NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_code VARCHAR(50);
 
 -- OrderItems Table
 CREATE TABLE IF NOT EXISTS order_items (

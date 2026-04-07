@@ -27,7 +27,7 @@ const checkout = async (req, res) => {
   const client = await pool.connect();
 
   try {
-    const { payment_method, shipping_address } = req.body;
+    const { payment_method, shipping_address, coupon_code } = req.body;
     const userId = req.user.id;
     const cartId = await getOrCreateCartId(client, userId);
 
@@ -89,6 +89,67 @@ const checkout = async (req, res) => {
       return sum + Number(item.effective_price) * Number(item.quantity);
     }, 0);
 
+    // ---- Coupon validation (inside transaction, row-locked) ----
+    let discountAmount = 0;
+    let appliedCouponCode = null;
+
+    if (coupon_code && String(coupon_code).trim()) {
+      const couponResult = await client.query(
+        `SELECT * FROM coupons WHERE code = $1 FOR UPDATE`,
+        [String(coupon_code).toUpperCase().trim()],
+      );
+
+      if (couponResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ status: "error", message: "Invalid coupon code" });
+      }
+
+      const coupon = couponResult.rows[0];
+      const now = new Date();
+
+      if (!coupon.is_active) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ status: "error", message: "This coupon is no longer active" });
+      }
+      if (now < new Date(coupon.start_date)) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ status: "error", message: "This coupon is not yet valid" });
+      }
+      if (now > new Date(coupon.end_date)) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ status: "error", message: "This coupon has expired" });
+      }
+      if (coupon.usage_limit !== null && coupon.used_count >= coupon.usage_limit) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ status: "error", message: "This coupon has reached its usage limit" });
+      }
+      if (totalAmount < Number(coupon.min_order_amount)) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({
+          status: "error",
+          message: `Minimum order amount of ৳${Number(coupon.min_order_amount).toFixed(2)} required for this coupon`,
+        });
+      }
+
+      if (coupon.discount_type === "percentage") {
+        discountAmount = (totalAmount * Number(coupon.discount_value)) / 100;
+        if (coupon.max_discount_amount) {
+          discountAmount = Math.min(discountAmount, Number(coupon.max_discount_amount));
+        }
+      } else {
+        discountAmount = Math.min(Number(coupon.discount_value), totalAmount);
+      }
+      discountAmount = Number(discountAmount.toFixed(2));
+      appliedCouponCode = coupon.code;
+
+      await client.query(
+        `UPDATE coupons SET used_count = used_count + 1 WHERE id = $1`,
+        [coupon.id],
+      );
+    }
+
+    const finalAmount = Number((totalAmount - discountAmount).toFixed(2));
+
     // Generate a unique transaction ID for SSLCommerz
     const tranId = `TXN_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
@@ -99,6 +160,8 @@ const checkout = async (req, res) => {
       `INSERT INTO orders (
                 user_id,
                 total_amount,
+                discount_amount,
+                coupon_code,
                 payment_method,
                 payment_status,
                 order_status,
@@ -106,11 +169,13 @@ const checkout = async (req, res) => {
                 tran_id,
                 expires_at
             )
-            VALUES ($1, $2, $3, 'Unpaid', 'Pending', $4, $5, $6)
-            RETURNING id, total_amount`,
+            VALUES ($1, $2, $3, $4, $5, 'Unpaid', 'Pending', $6, $7, $8)
+            RETURNING id, total_amount, discount_amount, coupon_code`,
       [
         userId,
-        totalAmount,
+        finalAmount,
+        discountAmount,
+        appliedCouponCode,
         normalizedPaymentMethod,
         shipping_address,
         isOnlinePayment ? tranId : null,
@@ -166,6 +231,8 @@ const checkout = async (req, res) => {
         data: {
           orderId: order.id,
           total_amount: Number(order.total_amount),
+          discount_amount: Number(order.discount_amount),
+          coupon_code: order.coupon_code,
           redirect: false,
         },
       });
@@ -183,7 +250,7 @@ const checkout = async (req, res) => {
     const productNames = cartItems.map((i) => i.name).join(", ");
 
     const sslczData = {
-      total_amount: Number(totalAmount),
+      total_amount: Number(finalAmount),
       currency: "BDT",
       tran_id: tranId,
       success_url: `${BACKEND_URL}/orders/payment/success`,
@@ -254,6 +321,8 @@ const checkout = async (req, res) => {
       data: {
         orderId: order.id,
         total_amount: Number(order.total_amount),
+        discount_amount: Number(order.discount_amount),
+        coupon_code: order.coupon_code,
         redirect: true,
         checkout_url: apiResponse.GatewayPageURL,
       },
