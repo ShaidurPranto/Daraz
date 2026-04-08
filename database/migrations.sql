@@ -184,3 +184,28 @@ CREATE TABLE IF NOT EXISTS coupons (
 
 CREATE INDEX IF NOT EXISTS idx_coupons_code     ON coupons (code);
 CREATE INDEX IF NOT EXISTS idx_coupons_end_date ON coupons (end_date);
+
+-- Support Tickets Table
+CREATE TABLE IF NOT EXISTS support_tickets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subject VARCHAR(255) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'in_progress', 'closed')),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Support Messages Table (thread of messages per ticket)
+CREATE TABLE IF NOT EXISTS support_messages (
+    id SERIAL PRIMARY KEY,
+    ticket_id UUID NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+    sender_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    is_admin BOOLEAN NOT NULL DEFAULT FALSE,
+    message TEXT,
+    image_url TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_support_tickets_user   ON support_tickets (user_id);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets (status);
+CREATE INDEX IF NOT EXISTS idx_support_messages_ticket ON support_messages (ticket_id);
