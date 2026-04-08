@@ -83,6 +83,8 @@ export interface AdminOrderDetails {
     phone?: string | null;
   };
   total_amount: number;
+  discount_amount: number;
+  coupon_code: string | null;
   payment_method: string;
   payment_status: string;
   order_status: string;

@@ -332,9 +332,28 @@ export default function AdminOrderDetailsPage({
                 <span className="font-semibold">Date:</span>{" "}
                 {new Date(order.created_at).toLocaleString()}
               </p>
-              <p className="pt-2 text-base font-bold">
-                Total: ৳ {order.total_amount.toLocaleString()}
-              </p>
+              {order.coupon_code && (
+                <div className="mt-3 space-y-1 border-t pt-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold">Coupon Applied:</span>
+                    <span className="rounded bg-orange-100 px-2 py-0.5 font-mono text-xs font-bold text-orange-700">
+                      {order.coupon_code}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-green-600">
+                    <span>Discount</span>
+                    <span className="font-semibold">
+                      − ৳ {order.discount_amount.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              )}
+              <div className="flex items-center justify-between border-t pt-3 text-base font-bold text-gray-900">
+                <span>Total</span>
+                <span className="text-primary">
+                  ৳ {order.total_amount.toLocaleString()}
+                </span>
+              </div>
             </CardContent>
           </Card>
         </div>
