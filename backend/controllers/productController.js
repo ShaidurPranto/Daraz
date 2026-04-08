@@ -24,7 +24,12 @@ const createProduct = async (req, res) => {
       category_id,
     } = req.body;
 
-    if (!name || !image_url || price === undefined || category_id === undefined) {
+    if (
+      !name ||
+      !image_url ||
+      price === undefined ||
+      category_id === undefined
+    ) {
       return res.status(400).json({
         status: "error",
         message: "name, image_url, price, and category_id are required",
@@ -33,10 +38,13 @@ const createProduct = async (req, res) => {
 
     const numericPrice = Number(price);
     const numericDiscountPrice =
-      discount_price === null || discount_price === undefined || discount_price === ""
+      discount_price === null ||
+      discount_price === undefined ||
+      discount_price === ""
         ? null
         : Number(discount_price);
-    const numericStock = stock === undefined || stock === null || stock === "" ? 0 : Number(stock);
+    const numericStock =
+      stock === undefined || stock === null || stock === "" ? 0 : Number(stock);
     const numericCategoryId = Number(category_id);
 
     if (!Number.isFinite(numericPrice) || numericPrice < 0) {
@@ -56,10 +64,7 @@ const createProduct = async (req, res) => {
       });
     }
 
-    if (
-      numericDiscountPrice !== null &&
-      numericDiscountPrice > numericPrice
-    ) {
+    if (numericDiscountPrice !== null && numericDiscountPrice > numericPrice) {
       return res.status(400).json({
         status: "error",
         message: "discount_price cannot be greater than price",
@@ -184,14 +189,11 @@ const updateProduct = async (req, res) => {
       category_id,
     } = req.body;
 
-    const nextName =
-      name === undefined ? existing.name : String(name).trim();
+    const nextName = name === undefined ? existing.name : String(name).trim();
     const nextImageUrl =
       image_url === undefined ? existing.image_url : String(image_url).trim();
     const nextBrand =
-      brand === undefined
-        ? existing.brand
-        : String(brand || "").trim() || null;
+      brand === undefined ? existing.brand : String(brand || "").trim() || null;
     const nextDescription =
       description === undefined
         ? existing.description
@@ -207,9 +209,13 @@ const updateProduct = async (req, res) => {
     const nextStock =
       stock === undefined ? Number(existing.stock) : Number(stock);
     const nextFlashSale =
-      flash_sale === undefined ? Boolean(existing.flash_sale) : Boolean(flash_sale);
+      flash_sale === undefined
+        ? Boolean(existing.flash_sale)
+        : Boolean(flash_sale);
     const nextCategoryId =
-      category_id === undefined ? Number(existing.category_id) : Number(category_id);
+      category_id === undefined
+        ? Number(existing.category_id)
+        : Number(category_id);
 
     if (!nextName || !nextImageUrl) {
       return res.status(400).json({
@@ -681,6 +687,7 @@ const getTrendingProducts = async (req, res) => {
             p.description,
                 p.price,
                 p.discount_price,
+                p.stock,
                 p.flash_sale,
                 p.category_id,
                 c.name as category_name,
@@ -688,7 +695,7 @@ const getTrendingProducts = async (req, res) => {
             FROM products p
             LEFT JOIN categories c ON p.category_id = c.id
             LEFT JOIN order_items oi ON p.id = oi.product_id AND oi.rating IS NOT NULL
-          GROUP BY p.id, p.name, p.image_url, p.brand, p.description, p.price, p.discount_price, p.flash_sale, p.category_id, c.name
+          GROUP BY p.id, p.name, p.image_url, p.brand, p.description, p.price, p.discount_price, p.stock, p.flash_sale, p.category_id, c.name
             ORDER BY rating DESC NULLS LAST
             LIMIT 10`,
     );
