@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Search, ShoppingCart, User as UserIcon, LayoutDashboard } from "lucide-react";
+import { Search, ShoppingCart, User as UserIcon, LayoutDashboard, HeadphonesIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuthStore } from "@/lib/authStore";
@@ -100,6 +100,14 @@ export default function Navbar() {
                 <Link href="/cart">
                   <Button variant="ghost" size="icon" className="relative">
                     <ShoppingCart className="h-5 w-5" />
+                  </Button>
+                </Link>
+              )}
+              {/* Support - Only for regular users */}
+              {!user?.is_admin && (
+                <Link href="/support">
+                  <Button variant="ghost" size="icon" title="Support">
+                    <HeadphonesIcon className="h-5 w-5" />
                   </Button>
                 </Link>
               )}
