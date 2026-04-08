@@ -1067,3 +1067,166 @@ export async function fetchAuditLogs(params: {
   const json = await res.json();
   return { data: json.data as AuditLog[], meta: json.meta as AuditLogMeta };
 }
+
+// ============ SUPPORT API ============
+
+export type TicketStatus = "open" | "in_progress" | "closed";
+
+export interface SupportTicket {
+  id: string;
+  user_id: string;
+  subject: string;
+  status: TicketStatus;
+  created_at: string;
+  updated_at: string;
+  message_count?: number;
+  last_message_at?: string | null;
+}
+
+export interface AdminSupportTicket extends SupportTicket {
+  user_name: string;
+  user_email: string;
+}
+
+export interface SupportMessage {
+  id: number;
+  ticket_id: string;
+  sender_id: string;
+  sender_name: string;
+  is_admin: boolean;
+  message: string | null;
+  image_url: string | null;
+  created_at: string;
+}
+
+export interface SupportTicketDetail {
+  ticket: SupportTicket;
+  messages: SupportMessage[];
+}
+
+export interface AdminSupportTicketDetail {
+  ticket: AdminSupportTicket & { user_phone?: string | null };
+  messages: SupportMessage[];
+}
+
+function userToken() {
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  if (!token) throw new Error("Unauthorized - Please login");
+  return token;
+}
+
+// User: create ticket
+export async function createSupportTicket(
+  subject: string,
+  message: string,
+  image_url?: string | null,
+): Promise<SupportTicket> {
+  const res = await fetch(`${BASE_URL}/support`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${userToken()}` },
+    body: JSON.stringify({ subject, message, image_url: image_url || null }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { message?: string }).message || "Failed to create ticket");
+  }
+  return (await res.json()).data as SupportTicket;
+}
+
+// User: list own tickets
+export async function fetchUserSupportTickets(): Promise<SupportTicket[]> {
+  const res = await fetch(`${BASE_URL}/support`, {
+    headers: { Authorization: `Bearer ${userToken()}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Failed to fetch tickets");
+  return (await res.json()).data as SupportTicket[];
+}
+
+// User: get ticket detail
+export async function fetchUserTicketById(ticketId: string): Promise<SupportTicketDetail> {
+  const res = await fetch(`${BASE_URL}/support/${ticketId}`, {
+    headers: { Authorization: `Bearer ${userToken()}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Failed to fetch ticket");
+  return (await res.json()).data as SupportTicketDetail;
+}
+
+// User: send message
+export async function sendUserSupportMessage(
+  ticketId: string,
+  message?: string | null,
+  image_url?: string | null,
+): Promise<SupportMessage> {
+  const res = await fetch(`${BASE_URL}/support/${ticketId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${userToken()}` },
+    body: JSON.stringify({ message: message || null, image_url: image_url || null }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { message?: string }).message || "Failed to send message");
+  }
+  return (await res.json()).data as SupportMessage;
+}
+
+// Admin: list all tickets
+export async function adminFetchSupportTickets(status?: TicketStatus): Promise<AdminSupportTicket[]> {
+  const params = status ? `?status=${status}` : "";
+  const res = await fetch(`${BASE_URL}/support/admin/all${params}`, {
+    headers: { Authorization: `Bearer ${adminToken()}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Failed to fetch tickets");
+  return (await res.json()).data as AdminSupportTicket[];
+}
+
+// Admin: get ticket detail
+export async function adminFetchTicketById(ticketId: string): Promise<AdminSupportTicketDetail> {
+  const res = await fetch(`${BASE_URL}/support/admin/${ticketId}`, {
+    headers: { Authorization: `Bearer ${adminToken()}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Failed to fetch ticket");
+  return (await res.json()).data as AdminSupportTicketDetail;
+}
+
+// Admin: reply
+export async function adminReplySupportTicket(
+  ticketId: string,
+  message?: string | null,
+  image_url?: string | null,
+): Promise<SupportMessage> {
+  const res = await fetch(`${BASE_URL}/support/admin/${ticketId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken()}` },
+    body: JSON.stringify({ message: message || null, image_url: image_url || null }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { message?: string }).message || "Failed to send reply");
+  }
+  return (await res.json()).data as SupportMessage;
+}
+
+// Admin: update status
+export async function adminUpdateTicketStatus(
+  ticketId: string,
+  status: TicketStatus,
+): Promise<SupportTicket> {
+  const res = await fetch(`${BASE_URL}/support/admin/${ticketId}/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken()}` },
+    body: JSON.stringify({ status }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { message?: string }).message || "Failed to update status");
+  }
+  return (await res.json()).data as SupportTicket;
+}

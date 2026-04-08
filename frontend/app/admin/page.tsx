@@ -273,6 +273,11 @@ export default function AdminDashboard() {
                   Manage Coupons
                 </Button>
               </Link>
+              <Link href="/admin/support">
+                <Button variant="outline" className="w-full">
+                  Support Tickets
+                </Button>
+              </Link>
             </CardContent>
           </Card>
         </div>
