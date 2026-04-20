@@ -49,7 +49,7 @@ Experience the live, production deployment of the application:
 
 ## 🌟 Overview
 
-**Daraz** is a feature-rich eCommerce platform inspired by South Asia's leading online marketplace. It provides a complete shopping experience — from browsing and searching products, to cart management, checkout, order tracking, and post-purchase reviews. The platform includes both customer-facing pages and an admin dashboard for product and order management.
+**Daraz** is a feature-rich eCommerce platform inspired by South Asia's leading online marketplace. It provides a complete shopping experience — from browsing and searching products, to cart management, checkout with coupon discounts, order tracking, and post-purchase reviews. The platform includes both customer-facing pages and a full admin dashboard for product, order, user, and coupon management.
 
 ---
 
@@ -62,8 +62,13 @@ Experience the live, production deployment of the application:
 - **AI Reliability Score** — LLM-powered product reliability analysis based on review sentiment (Groq / LLaMA 3.1)
 - **Shopping Cart** — Add, update quantity, and remove items with persistent cart state and stock validation
 - **Checkout & Orders** — Transactional checkout with atomic stock deduction, payment method selection, and shipping address
+- **Coupon Discounts** — Apply promo codes at checkout for percentage or fixed discounts; validated live before order placement
 - **Order History** — View past orders with expandable/collapsible item details
 - **Reviews & Ratings** — Rate and review purchased products (purchase-verified reviews only, one per product)
+
+### 💳 Payments
+- **Cash on Delivery** — Standard COD flow with admin-managed status transitions
+- **Online Payment** — SSLCommerz payment gateway integration with a 10-minute reservation window, automatic expiry cron job, and IPN callback handling
 
 ### 🔐 Authentication & Security
 - **JWT Authentication** — Secure token-based auth with bcrypt password hashing (7-day expiry)
@@ -75,8 +80,10 @@ Experience the live, production deployment of the application:
 - **Dashboard Stats** — Platform-wide metrics: users, orders, products, and commission revenue
 - **Sales Analytics** — Daily revenue breakdown, top products, and configurable date ranges
 - **Product Management** — Full CRUD with duplicate detection, rich text descriptions, and category validation
-- **Order Management** — View completed orders with customer details, filter by customer name
+- **Order Management** — View all orders with customer details, filter by name, update order status with state machine enforcement; coupon and discount info visible per order
 - **User Management** — List all users with activity stats, online status, and detailed order history
+- **Coupon Management** — Create, edit, and delete coupon codes; add/subtract validity days; toggle active status; track usage; tag promotion channels (TV, Facebook, Newspaper, Other)
+- **Audit Logs** — Paginated log of every API request and response, filterable by user, method, path, status code, and date range
 
 ### 🏗️ Infrastructure
 - **Fully Dockerized** — Single `docker compose up` spins up the entire stack (4 services)
@@ -96,6 +103,8 @@ Experience the live, production deployment of the application:
 | **Backend** | Node.js 22, Express 5 |
 | **Database** | PostgreSQL 15 with pgcrypto (UUID generation) |
 | **Auth** | JWT (jsonwebtoken) + bcryptjs |
+| **Payment Gateway** | SSLCommerz (sandbox & live) |
+| **AI** | Groq API / LLaMA 3.1 (reliability scoring) |
 | **Reverse Proxy** | Nginx (Alpine) |
 | **Containerization** | Docker & Docker Compose |
 | **CI/CD** | GitHub Actions → Azure VM |
@@ -163,6 +172,36 @@ docker compose up -d --build --wait
 
 > **Note:** On first launch, PostgreSQL automatically runs the migration and seed scripts from the `database/` directory. The seed data includes sample categories, products, and a demo user account.
 
+### Applying migrations to an existing database
+
+If you already have a running database volume (e.g. after pulling new changes that add columns), run the following to apply the new columns without losing data:
+
+```bash
+docker exec daraz_postgres psql -U daraz_user -d daraz_db -c "
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(10,2) NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_code VARCHAR(50);
+
+CREATE TABLE IF NOT EXISTS coupons (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code VARCHAR(50) UNIQUE NOT NULL,
+  discount_type VARCHAR(20) NOT NULL CHECK (discount_type IN ('percentage', 'fixed')),
+  discount_value NUMERIC(10, 2) NOT NULL,
+  min_order_amount NUMERIC(10, 2) NOT NULL DEFAULT 0,
+  max_discount_amount NUMERIC(10, 2),
+  start_date TIMESTAMPTZ NOT NULL,
+  end_date TIMESTAMPTZ NOT NULL,
+  usage_limit INT,
+  used_count INT NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  promotion_channels TEXT[] NOT NULL DEFAULT '{}',
+  promotion_notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_coupons_code ON coupons (code);
+CREATE INDEX IF NOT EXISTS idx_coupons_end_date ON coupons (end_date);
+"
+```
+
 ### Local Development
 
 For active development with hot-reloading:
@@ -213,6 +252,11 @@ Copy `.env.example` to `backend/.env` and configure:
 | `NODE_ENV` | Environment mode | `development` |
 | `GROQ_API_KEY` | Groq API key for AI reliability scores | — |
 | `AI_TIMEOUT_MS` | AI request timeout before fallback (ms) | `5000` |
+| `SSLCOMMERZ_STORE_ID` | SSLCommerz store ID | — |
+| `SSLCOMMERZ_STORE_PASSWORD` | SSLCommerz store password | — |
+| `SSLCOMMERZ_IS_LIVE` | `true` for live, `false` for sandbox | `false` |
+| `BACKEND_URL` | Public backend URL (used in SSLCommerz callbacks) | `http://localhost:9000/api` |
+| `FRONTEND_URL` | Public frontend URL (used in payment redirects) | `http://localhost:9000` |
 
 > ⚠️ **Important:** Always set a strong `JWT_SECRET` in production. The `GROQ_API_KEY` is optional — the AI endpoint gracefully falls back to a basic rating-based calculation without it.
 
@@ -220,7 +264,7 @@ Copy `.env.example` to `backend/.env` and configure:
 
 ## 📡 API Reference
 
-The backend exposes a RESTful API at `/api` (via Nginx) or directly at `:4000`. The API serves **28 endpoints** across 7 modules.
+The backend exposes a RESTful API at `/api` (via Nginx) or directly at `:4000`. The API serves **36 endpoints** across 8 modules.
 
 ### Authentication (`/auth`)
 
@@ -240,7 +284,7 @@ The backend exposes a RESTful API at `/api` (via Nginx) or directly at `:4000`. 
 | `GET` | `/products/trending` | — | Top 10 products by rating |
 | `GET` | `/products/:id` | — | Product details with reviews |
 | `POST` | `/products` | Admin | Create a product |
-| `PUT` | `/products/:id` | Admin | Update a product (partial) |
+| `PUT` | `/products/:id` | Admin | Update a product |
 | `DELETE` | `/products/:id` | Admin | Delete a product |
 
 ### Cart (`/cart`)
@@ -256,9 +300,25 @@ The backend exposes a RESTful API at `/api` (via Nginx) or directly at `:4000`. 
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| `POST` | `/orders/checkout` | User | Place order (transactional) |
+| `POST` | `/orders/checkout` | User | Place order — accepts optional `coupon_code` |
 | `GET` | `/orders/me` | User | View order history |
 | `GET` | `/orders/:id` | User | Get order details |
+| `POST` | `/orders/payment/success` | — | SSLCommerz success callback |
+| `POST` | `/orders/payment/fail` | — | SSLCommerz fail callback |
+| `POST` | `/orders/payment/cancel` | — | SSLCommerz cancel callback |
+| `POST` | `/orders/payment/ipn` | — | SSLCommerz IPN callback |
+
+### Coupons (`/coupons`)
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `POST` | `/coupons/validate` | User | Validate a coupon code and preview discount |
+| `POST` | `/coupons` | Admin | Create a new coupon |
+| `GET` | `/coupons` | Admin | List all coupons |
+| `GET` | `/coupons/:id` | Admin | Get a single coupon |
+| `PUT` | `/coupons/:id` | Admin | Update a coupon |
+| `PATCH` | `/coupons/:id/days` | Admin | Add or subtract days from end date |
+| `DELETE` | `/coupons/:id` | Admin | Delete a coupon |
 
 ### Reviews (`/reviews`)
 
@@ -280,10 +340,12 @@ The backend exposes a RESTful API at `/api` (via Nginx) or directly at `:4000`. 
 |---|---|---|---|
 | `GET` | `/admin/stats` | Admin | Dashboard summary stats |
 | `GET` | `/admin/analytics` | Admin | Sales analytics with date range |
-| `GET` | `/admin/orders` | Admin | List completed orders |
-| `GET` | `/admin/orders/:id` | Admin | Order details with customer info |
+| `GET` | `/admin/orders` | Admin | List all orders, filter by customer name |
+| `GET` | `/admin/orders/:id` | Admin | Order details with coupon/discount info |
+| `PATCH` | `/admin/orders/:id/status` | Admin | Update order status (state machine) |
 | `GET` | `/admin/users` | Admin | List all users with activity status |
 | `GET` | `/admin/users/:id` | Admin | User profile with order history |
+| `GET` | `/admin/audit-logs` | Admin | Paginated audit log with filters |
 
 ### Health
 
@@ -337,6 +399,8 @@ erDiagram
         INT stock
         BOOLEAN flash_sale
         INT category_id FK
+        NUMERIC reliability_score
+        TEXT ai_comment
     }
 
     carts {
@@ -356,10 +420,15 @@ erDiagram
         UUID id PK
         UUID user_id FK
         NUMERIC total_amount
+        NUMERIC discount_amount
+        VARCHAR coupon_code
         VARCHAR payment_method
         VARCHAR payment_status
         VARCHAR order_status
         TEXT shipping_address
+        VARCHAR tran_id
+        VARCHAR val_id
+        TIMESTAMPTZ expires_at
         TIMESTAMPTZ created_at
     }
 
@@ -378,19 +447,61 @@ erDiagram
         SERIAL id PK
         UUID user_id FK
         UUID product_id FK
+        UUID order_id FK
         INT booking_count
+        TIMESTAMPTZ created_at
+    }
+
+    coupons {
+        UUID id PK
+        VARCHAR code UK
+        VARCHAR discount_type
+        NUMERIC discount_value
+        NUMERIC min_order_amount
+        NUMERIC max_discount_amount
+        TIMESTAMPTZ start_date
+        TIMESTAMPTZ end_date
+        INT usage_limit
+        INT used_count
+        BOOLEAN is_active
+        TEXT[] promotion_channels
+        TEXT promotion_notes
+        TIMESTAMPTZ created_at
+    }
+
+    user_activity {
+        UUID user_id PK
+        TIMESTAMPTZ last_seen_at
+        TIMESTAMPTZ last_cart_activity
+    }
+
+    audit_logs {
+        BIGSERIAL id PK
+        UUID user_id FK
+        VARCHAR user_name
+        VARCHAR user_email
+        VARCHAR method
+        TEXT path
+        TEXT frontend_url
+        TEXT ip
+        TEXT user_agent
+        INT status_code
+        JSONB req_body
+        JSONB res_body
         TIMESTAMPTZ created_at
     }
 
     users ||--o{ carts : has
     users ||--o{ orders : places
     users ||--o{ bookings : reserves
+    users ||--|| user_activity : tracks
     categories ||--o{ products : contains
     products ||--o{ cart_items : "added to"
     products ||--o{ order_items : "ordered as"
     products ||--o{ bookings : "reserved in"
     carts ||--o{ cart_items : contains
     orders ||--o{ order_items : contains
+    orders ||--o{ bookings : reserves
 ```
 
 ---
@@ -448,28 +559,45 @@ Daraz/
 │   ├── controllers/        # Route handlers
 │   │   ├── adminController.js
 │   │   ├── aiController.js
+│   │   ├── auditController.js
 │   │   ├── authController.js
 │   │   ├── cartController.js
+│   │   ├── couponController.js
 │   │   ├── orderController.js
 │   │   ├── productController.js
 │   │   └── reviewController.js
-│   ├── middleware/          # Auth & admin middleware
+│   ├── middleware/          # Auth, admin, and activity middleware
 │   ├── routes/              # Express route definitions
+│   │   ├── adminRoute.js
+│   │   ├── aiRoute.js
+│   │   ├── authRoute.js
+│   │   ├── cartRoute.js
+│   │   ├── couponRoute.js
+│   │   ├── orderRoute.js
+│   │   ├── productRoute.js
+│   │   └── reviewRoute.js
 │   ├── Dockerfile
 │   ├── package.json
-│   └── server.js            # Application entry point
+│   └── server.js            # Application entry point + expiry cron job
 ├── database/
-│   ├── migrations.sql       # Schema creation & indexes
+│   ├── migrations.sql       # Schema creation, indexes, and ALTER TABLE migrations
 │   └── seed.sql             # Sample data for development
 ├── frontend/
 │   ├── app/                 # Next.js App Router pages
 │   │   ├── admin/           # Admin dashboard
+│   │   │   ├── page.tsx     # Dashboard + quick actions
+│   │   │   ├── analytics/   # Sales analytics
+│   │   │   ├── audit-logs/  # API audit log viewer
+│   │   │   ├── coupons/     # Coupon management
+│   │   │   ├── orders/      # Order list + detail
+│   │   │   ├── products/    # Product management
+│   │   │   └── users/       # User list + detail
 │   │   ├── cart/            # Shopping cart
-│   │   ├── checkout/        # Checkout flow
-│   │   ├── login/           # Authentication
+│   │   ├── checkout/        # Checkout flow with coupon input
+│   │   ├── login/           # Customer authentication
 │   │   ├── register/        # User registration
 │   │   ├── product/         # Product detail pages
-│   │   ├── profile/         # User profile & orders
+│   │   ├── profile/         # User profile, orders & reviews
 │   │   ├── search/          # Product search & filters
 │   │   └── page.tsx         # Homepage
 │   ├── components/          # Reusable UI components
@@ -478,7 +606,10 @@ Daraz/
 │   │   ├── ProductCard.tsx
 │   │   ├── HeroSection.tsx
 │   │   └── ...
-│   ├── lib/                 # Utilities, API client, store
+│   ├── lib/
+│   │   ├── api.ts           # All API client functions and TypeScript types
+│   │   ├── authStore.ts     # Zustand auth state
+│   │   └── utils.ts
 │   ├── Dockerfile
 │   └── package.json
 ├── nginx/
@@ -489,3 +620,19 @@ Daraz/
 ├── docker-compose.yaml      # Multi-container orchestration
 └── README.md                # ← You are here
 ```
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/your-feature`)
+3. Commit your changes (`git commit -m 'Add some feature'`)
+4. Push to the branch (`git push origin feature/your-feature`)
+5. Open a Pull Request
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License.

@@ -44,9 +44,9 @@ jobs:
             cat <<EOF > .env
             BACKEND_URL=${{ vars.BACKEND_URL }}
             FRONTEND_URL=${{ vars.FRONTEND_URL }}
-            # Add any other variables your docker-compose.yml expects below:
-            # DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-            # GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
+            GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
+            SSLCOMMERZ_STORE_ID=${{ secrets.SSLCOMMERZ_STORE_ID }}
+            SSLCOMMERZ_STORE_PASSWORD=${{ secrets.SSLCOMMERZ_STORE_PASSWORD }}
             EOF
             # --------------------------------------------------
 

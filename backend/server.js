@@ -8,6 +8,7 @@ const orderRoute = require("./routes/orderRoute");
 const cartRoute = require("./routes/cartRoute");
 const adminRoute = require("./routes/adminRoute");
 const couponRoute = require("./routes/couponRoute");
+const supportRoute = require("./routes/supportRoute");
 const activityMiddleware = require("./middleware/activityMiddleware");
 
 const app = express();
@@ -32,6 +33,7 @@ app.use("/orders", orderRoute);
 app.use("/cart", cartRoute);
 app.use("/admin", adminRoute);
 app.use("/coupons", couponRoute);
+app.use("/support", supportRoute);
 
 app.get("/health", async (req, res) => {
   try {
