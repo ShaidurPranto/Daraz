@@ -5,6 +5,74 @@ const BASE_URL =
     ? process.env.NEXT_INTERNAL_SERVER_URL || "http://backend:4000"
     : "/api";
 
+// ---------------------------------------------------------------------------
+// IP forwarding helpers — ensures audit logs capture the real client IP
+// even when the request is made from the SSR server (Docker bridge network).
+//
+// Flow:  Browser → Nginx (sets X-Forwarded-For / X-Real-IP) → Next.js SSR
+//        → getForwardedIpHeaders() reads those headers from the incoming
+//        request via next/headers → apiFetch() forwards them to the backend.
+// ---------------------------------------------------------------------------
+
+/**
+ * On the server side, reads the real client IP from the incoming request
+ * headers (set by Nginx) and returns them for forwarding to the backend.
+ * On the client side (browser), returns nothing — the browser talks to
+ * Nginx which sets X-Forwarded-For directly on the backend request.
+ */
+async function getForwardedIpHeaders(): Promise<Record<string, string>> {
+  if (typeof window !== "undefined") return {};
+
+  try {
+    // eval('require') hides this from webpack/turbopack static analysis,
+    // preventing it from being bundled into client-side code where
+    // next/headers would fail. At runtime on the server, Node.js
+    // resolves the module normally.
+    // eslint-disable-next-line no-eval
+    const { headers } = eval('require')('next/headers');
+    const reqHeaders = await headers();
+
+    // Nginx sets these on the request to the frontend container
+    const forwardedFor = reqHeaders.get("x-forwarded-for") || "";
+    const realIp = reqHeaders.get("x-real-ip") || "";
+    const clientIp = forwardedFor.split(",")[0]?.trim() || realIp;
+
+    if (!clientIp) return {};
+
+    return {
+      "x-forwarded-for": clientIp,
+      "x-real-ip": clientIp,
+    };
+  } catch {
+    // headers() throws during ISR revalidation (no request context).
+    // Silently fall back — the backend will just see the Docker bridge IP.
+    return {};
+  }
+}
+
+/** Extended RequestInit that accepts Next.js-specific `next` options. */
+type ApiFetchInit = RequestInit & {
+  next?: { revalidate?: number | false; tags?: string[] };
+};
+
+/**
+ * Drop-in replacement for `fetch()` that automatically attaches the real
+ * client IP headers when running on the server.
+ */
+async function apiFetch(url: string, init: ApiFetchInit = {}): Promise<Response> {
+  const ipHeaders = await getForwardedIpHeaders();
+
+  const mergedHeaders: Record<string, string> = {
+    ...ipHeaders,
+    ...(init.headers
+      ? Object.fromEntries(new Headers(init.headers as HeadersInit).entries())
+      : {}),
+  };
+
+  return fetch(url, { ...init, headers: mergedHeaders });
+}
+
+
 export async function fetchProducts(
   params: Record<string, string | null> = {},
 ) {
@@ -20,7 +88,7 @@ export async function fetchProducts(
       ? { next: { revalidate: 1 as const } }
       : { cache: "no-store" as const };
 
-  const res = await fetch(url, fetchOptions);
+  const res = await apiFetch(url, fetchOptions);
 
   if (!res.ok) {
     throw new Error("Failed to fetch products");
@@ -32,7 +100,7 @@ export async function fetchProducts(
 export async function fetchTrendingProducts() {
   const url = `${BASE_URL}/products/trending`;
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     next: { revalidate: 1 },
   });
 
@@ -180,7 +248,7 @@ export interface AdminSalesAnalytics {
 export async function fetchCategories(): Promise<Category[]> {
   const url = `${BASE_URL}/products/categories`;
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     next: { revalidate: 1 }, // Cache categories for 1 hour
   });
 
@@ -203,7 +271,7 @@ export async function fetchCategories(): Promise<Category[]> {
 export async function fetchProduct(id: string) {
   const url = `${BASE_URL}/products/${id}`;
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     next: { revalidate: 1 },
   });
 
@@ -225,7 +293,7 @@ export async function createProduct(payload: CreateProductPayload) {
     throw new Error("Unauthorized - Please login as admin");
   }
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -255,7 +323,7 @@ export async function updateProductByAdmin(
     throw new Error("Unauthorized - Please login as admin");
   }
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
@@ -282,7 +350,7 @@ export async function deleteProductByAdmin(productId: string) {
     throw new Error("Unauthorized - Please login as admin");
   }
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "DELETE",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -313,7 +381,7 @@ export async function fetchAdminCompletedOrders(nameFilter?: string) {
 
   const url = `${BASE_URL}/admin/orders${params.toString() ? `?${params.toString()}` : ""}`;
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -339,7 +407,7 @@ export async function fetchAdminOrderById(orderId: string) {
   }
 
   const url = `${BASE_URL}/admin/orders/${orderId}`;
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -365,7 +433,7 @@ export async function fetchAdminUsers() {
   }
 
   const url = `${BASE_URL}/admin/users`;
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -391,7 +459,7 @@ export async function fetchAdminDashboardStats() {
   }
 
   const url = `${BASE_URL}/admin/stats`;
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -422,7 +490,7 @@ export async function fetchAdminSalesAnalytics(startDate: string, endDate: strin
   });
 
   const url = `${BASE_URL}/admin/analytics?${params.toString()}`;
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -448,7 +516,7 @@ export async function fetchAdminUserById(userId: string) {
   }
 
   const url = `${BASE_URL}/admin/users/${userId}`;
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -474,7 +542,7 @@ export async function logoutCurrentUser() {
   }
 
   const url = `${BASE_URL}/auth/logout`;
-  await fetch(url, {
+  await apiFetch(url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -495,7 +563,7 @@ export async function fetchCart() {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "GET",
     headers,
   });
@@ -519,7 +587,7 @@ export async function updateCartItem(cartItemId: number, quantity: number) {
     throw new Error("Unauthorized - Please login");
   }
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
@@ -547,7 +615,7 @@ export async function removeCartItem(cartItemId: number) {
     throw new Error("Unauthorized - Please login");
   }
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "DELETE",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -576,7 +644,7 @@ export async function addToCart(productId: string, quantity: number) {
     throw new Error("Unauthorized - Please login");
   }
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -613,7 +681,7 @@ export async function placeOrder(
     throw new Error("Unauthorized - Please login");
   }
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -657,7 +725,7 @@ export async function fetchOrders() {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "GET",
     headers,
   });
@@ -682,7 +750,7 @@ export async function fetchOrderById(orderId: string | number) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "GET",
     headers,
   });
@@ -705,7 +773,7 @@ export async function fetchOrderById(orderId: string | number) {
 export async function fetchProductReviews(productId: string) {
   const url = `${BASE_URL}/reviews/product/${productId}`;
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "GET",
     cache: "no-store",
   });
@@ -730,7 +798,7 @@ export async function submitReview(
     throw new Error("Unauthorized - Please login");
   }
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -758,7 +826,7 @@ export async function submitReview(
 export async function fetchProductReliabilityScore(productId: string) {
   const url = `${BASE_URL}/ai/reliability/${productId}`;
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "GET",
     cache: "no-store",
   });
@@ -787,7 +855,7 @@ export async function fetchAdminOrders(nameFilter?: string) {
 
   const url = `${BASE_URL}/admin/orders${params.toString() ? `?${params.toString()}` : ""}`;
 
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -816,7 +884,7 @@ export async function updateAdminOrderStatus(
   }
 
   const url = `${BASE_URL}/admin/orders/${orderId}/status`;
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -886,7 +954,7 @@ function adminToken() {
 
 export async function fetchAdminCoupons(): Promise<Coupon[]> {
   const url = `${BASE_URL}/coupons`;
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     headers: { Authorization: `Bearer ${adminToken()}` },
     cache: "no-store",
   });
@@ -900,7 +968,7 @@ export async function fetchAdminCoupons(): Promise<Coupon[]> {
 
 export async function createCouponByAdmin(payload: CreateCouponPayload): Promise<Coupon> {
   const url = `${BASE_URL}/coupons`;
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -922,7 +990,7 @@ export async function updateCouponByAdmin(
   payload: Partial<CreateCouponPayload> & { is_active?: boolean },
 ): Promise<Coupon> {
   const url = `${BASE_URL}/coupons/${couponId}`;
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
@@ -941,7 +1009,7 @@ export async function updateCouponByAdmin(
 
 export async function adjustCouponDaysByAdmin(couponId: string, days: number): Promise<Coupon> {
   const url = `${BASE_URL}/coupons/${couponId}/days`;
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -960,7 +1028,7 @@ export async function adjustCouponDaysByAdmin(couponId: string, days: number): P
 
 export async function deleteCouponByAdmin(couponId: string): Promise<void> {
   const url = `${BASE_URL}/coupons/${couponId}`;
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${adminToken()}` },
     cache: "no-store",
@@ -977,7 +1045,7 @@ export async function validateCouponCode(
 ): Promise<CouponValidationResult> {
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const url = `${BASE_URL}/coupons/validate`;
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -1045,7 +1113,7 @@ export async function fetchAuditLogs(params: {
   });
 
   const url = `${BASE_URL}/admin/audit-logs?${query.toString()}`;
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "GET",
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",

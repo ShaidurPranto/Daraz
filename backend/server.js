@@ -13,6 +13,11 @@ const activityMiddleware = require("./middleware/activityMiddleware");
 const app = express();
 const port = process.env.PORT || 4000;
 
+// Trust proxy headers (X-Forwarded-For, X-Real-IP) so that
+// req.ip and audit logs capture the real client IP even when
+// requests arrive via Nginx or the Next.js SSR server.
+app.set("trust proxy", true);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

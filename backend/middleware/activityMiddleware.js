@@ -33,6 +33,7 @@ function stripSensitive(obj) {
 function getIp(req) {
   return (
     req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+    req.headers["x-real-ip"]?.trim() ||
     req.socket?.remoteAddress ||
     null
   );
